@@ -15,22 +15,25 @@ st.title("🎬 Movie Recommendation System")
 # -------------------------------
 # LOAD DATASETS
 # -------------------------------
+import io
+import requests
+
 @st.cache_data
 def load_data():
-    movies_url = "https://raw.githubusercontent.com/omkarpathak/py-movie-recommender-system/master/tmdb_5000_movies.csv"
-    credits_url = "https://raw.githubusercontent.com/omkarpathak/py-movie-recommender-system/master/tmdb_5000_credits.csv"
 
-    movies = pd.read_csv(movies_url)
-    credits = pd.read_csv(credits_url)
+    movies_url = "https://raw.githubusercontent.com/codebasics/py/master/ML/9_recommendation_system/tmdb_5000_movies.csv"
+    credits_url = "https://raw.githubusercontent.com/codebasics/py/master/ML/9_recommendation_system/tmdb_5000_credits.csv"
+
+    movies_data = requests.get(movies_url).content
+    credits_data = requests.get(credits_url).content
+
+    movies = pd.read_csv(io.StringIO(movies_data.decode('utf-8')))
+    credits = pd.read_csv(io.StringIO(credits_data.decode('utf-8')))
 
     return movies, credits
 
+
 movies, credits = load_data()
-
-movies = movies.merge(credits, on="title")
-
-movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
-movies.dropna(inplace=True)
 
 # -------------------------------
 # DATA PREPROCESSING
@@ -153,4 +156,5 @@ if st.button("Recommend 🎥"):
 
         with col5:
             st.image(posters[4])
+
             st.caption(names[4])
