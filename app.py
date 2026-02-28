@@ -34,6 +34,14 @@ def load_data():
 
 
 movies, credits = load_data()
+# Merge datasets
+movies = movies.merge(credits, on='title')
+
+# Keep only required columns
+movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
+
+# Remove missing values
+movies.dropna(inplace=True)
 
 # -------------------------------
 # DATA PREPROCESSING
@@ -83,7 +91,7 @@ similarity = cosine_similarity(vectors)
 # -------------------------------
 # TMDB POSTER FUNCTION
 # -------------------------------
-API_KEY = "YOUR_API_KEY"
+API_KEY = "786a7ba4aec540b31e9e996558061c84"
 
 def fetch_poster(movie_id):
     try:
@@ -158,3 +166,4 @@ if st.button("Recommend 🎥"):
             st.image(posters[4])
 
             st.caption(names[4])
+
