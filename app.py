@@ -1,173 +1,155 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import ast
 import requests
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# -------------------------------
-# PAGE CONFIG
-# -------------------------------
+# -------------------------------------------------
+# PAGE SETTINGS
+# -------------------------------------------------
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 st.title("🎬 Movie Recommendation System")
 
-# -------------------------------
-# LOAD DATASETS
-# -------------------------------
-import io
-import requests
-
+# -------------------------------------------------
+# LOAD DATA
+# -------------------------------------------------
 @st.cache_data
 def load_data():
 
-    movies_url = "https://raw.githubusercontent.com/codebasics/py/master/ML/9_recommendation_system/tmdb_5000_movies.csv"
-    credits_url = "https://raw.githubusercontent.com/codebasics/py/master/ML/9_recommendation_system/tmdb_5000_credits.csv"
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
 
-    movies_data = requests.get(movies_url).content
-    credits_data = requests.get(credits_url).content
+    movies = movies.merge(credits, on="title")
 
-    movies = pd.read_csv(io.StringIO(movies_data.decode('utf-8')))
-    credits = pd.read_csv(io.StringIO(credits_data.decode('utf-8')))
+    movies = movies[
+        ["movie_id", "title", "overview", "genres", "keywords", "cast", "crew"]
+    ]
 
-    return movies, credits
+    movies.dropna(inplace=True)
+
+    return movies
 
 
-movies, credits = load_data()
+movies = load_data()
 
-# FIX ⭐ ensure column names match
-if 'movie_title' in credits.columns:
-    credits.rename(columns={'movie_title': 'title'}, inplace=True)
-
-# Merge datasets
-movies = movies.merge(credits, on='title')
-
-# rename id → movie_id
-movies.rename(columns={'id': 'movie_id'}, inplace=True)
-
-movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
-
-movies.dropna(inplace=True)
-# -------------------------------
-# DATA PREPROCESSING
-# -------------------------------
-
+# -------------------------------------------------
+# PREPROCESSING FUNCTIONS
+# -------------------------------------------------
 def convert(text):
     L = []
     for i in ast.literal_eval(text):
-        L.append(i['name'])
+        L.append(i["name"])
     return L
 
-movies['genres'] = movies['genres'].apply(convert)
-movies['keywords'] = movies['keywords'].apply(convert)
-movies['cast'] = movies['cast'].apply(convert)
 
 def fetch_director(text):
     L = []
     for i in ast.literal_eval(text):
-        if i['job'] == 'Director':
-            L.append(i['name'])
+        if i["job"] == "Director":
+            L.append(i["name"])
     return L
 
-movies['crew'] = movies['crew'].apply(fetch_director)
-
-movies['overview'] = movies['overview'].apply(lambda x: x.split())
 
 def collapse(L):
     return [i.replace(" ", "") for i in L]
 
-for col in ['genres','keywords','cast','crew']:
+
+# -------------------------------------------------
+# DATA PREPROCESSING
+# -------------------------------------------------
+movies["genres"] = movies["genres"].apply(convert)
+movies["keywords"] = movies["keywords"].apply(convert)
+movies["cast"] = movies["cast"].apply(convert)
+movies["crew"] = movies["crew"].apply(fetch_director)
+movies["overview"] = movies["overview"].apply(lambda x: x.split())
+
+for col in ["genres", "keywords", "cast", "crew"]:
     movies[col] = movies[col].apply(collapse)
 
-movies['tags'] = movies['overview'] + movies['genres'] + movies['keywords'] + movies['cast'] + movies['crew']
+movies["tags"] = (
+    movies["overview"]
+    + movies["genres"]
+    + movies["keywords"]
+    + movies["cast"]
+    + movies["crew"]
+)
 
-new_df = movies[['movie_id','title','tags']]
-new_df['tags'] = new_df['tags'].apply(lambda x: " ".join(x))
-new_df['tags'] = new_df['tags'].apply(lambda x: x.lower())
+new_df = movies[["movie_id", "title", "tags"]].copy()
 
-# -------------------------------
-# CREATE SIMILARITY MATRIX
-# -------------------------------
-cv = CountVectorizer(max_features=5000, stop_words='english')
-vectors = cv.fit_transform(new_df['tags']).toarray()
+new_df["tags"] = new_df["tags"].apply(lambda x: " ".join(x))
+new_df["tags"] = new_df["tags"].apply(lambda x: x.lower())
+
+# -------------------------------------------------
+# CREATE SIMILARITY
+# -------------------------------------------------
+cv = CountVectorizer(max_features=5000, stop_words="english")
+vectors = cv.fit_transform(new_df["tags"]).toarray()
 
 similarity = cosine_similarity(vectors)
 
-# -------------------------------
-# TMDB POSTER FUNCTION
-# -------------------------------
+# -------------------------------------------------
+# POSTER API
+# -------------------------------------------------
 API_KEY = "786a7ba4aec540b31e9e996558061c84"
+
 
 def fetch_poster(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=en-US"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        data = requests.get(url, headers=headers, timeout=10).json()
+
+        response = requests.get(url, timeout=10)
+        data = response.json()
 
         poster_path = data.get("poster_path")
 
         if poster_path:
-            return "https://image.tmdb.org/t/p/w500/" + poster_path
+            return "https://image.tmdb.org/t/p/w500" + poster_path
         else:
             return "https://via.placeholder.com/500x750?text=No+Poster"
+
     except:
         return "https://via.placeholder.com/500x750?text=Error"
 
-# -------------------------------
-# RECOMMENDATION FUNCTION
-# -------------------------------
+# -------------------------------------------------
+# RECOMMEND FUNCTION
+# -------------------------------------------------
 def recommend(movie):
-    movie_index = new_df[new_df['title'] == movie].index[0]
-    distances = similarity[movie_index]
+    index = new_df[new_df["title"] == movie].index[0]
+    distances = similarity[index]
 
     movies_list = sorted(
         list(enumerate(distances)),
         reverse=True,
-        key=lambda x: x[1]
+        key=lambda x: x[1],
     )[1:6]
 
-    recommended_movies = []
-    recommended_posters = []
+    names = []
+    posters = []
 
     for i in movies_list:
         movie_id = new_df.iloc[i[0]].movie_id
-        recommended_movies.append(new_df.iloc[i[0]].title)
-        recommended_posters.append(fetch_poster(movie_id))
+        names.append(new_df.iloc[i[0]].title)
+        posters.append(fetch_poster(movie_id))
 
-    return recommended_movies, recommended_posters
+    return names, posters
 
-# -------------------------------
+
+# -------------------------------------------------
 # UI
-# -------------------------------
+# -------------------------------------------------
 selected_movie = st.selectbox(
-    "Select a movie:",
-    new_df['title'].values
+    "Select a movie:", new_df["title"].values
 )
 
 if st.button("Recommend 🎥"):
 
-    with st.spinner("Finding similar movies... 🍿"):
-        names, posters = recommend(selected_movie)
+    names, posters = recommend(selected_movie)
 
-        col1, col2, col3, col4, col5 = st.columns(5)
+    cols = st.columns(5)
 
-        with col1:
-            st.image(posters[0])
-            st.caption(names[0])
-
-        with col2:
-            st.image(posters[1])
-            st.caption(names[1])
-
-        with col3:
-            st.image(posters[2])
-            st.caption(names[2])
-
-        with col4:
-            st.image(posters[3])
-            st.caption(names[3])
-
-        with col5:
-            st.image(posters[4])
-            st.caption(names[4])
-            
+    for i in range(5):
+        with cols[i]:
+            if posters[i]:
+                st.image(posters[i])
+            st.caption(names[i])
