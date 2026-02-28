@@ -34,15 +34,20 @@ def load_data():
 
 
 movies, credits = load_data()
+
+# FIX ⭐ ensure column names match
+if 'movie_title' in credits.columns:
+    credits.rename(columns={'movie_title': 'title'}, inplace=True)
+
 # Merge datasets
 movies = movies.merge(credits, on='title')
 
-# Keep only required columns
+# rename id → movie_id
+movies.rename(columns={'id': 'movie_id'}, inplace=True)
+
 movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
 
-# Remove missing values
 movies.dropna(inplace=True)
-
 # -------------------------------
 # DATA PREPROCESSING
 # -------------------------------
@@ -164,6 +169,5 @@ if st.button("Recommend 🎥"):
 
         with col5:
             st.image(posters[4])
-
             st.caption(names[4])
-
+            
